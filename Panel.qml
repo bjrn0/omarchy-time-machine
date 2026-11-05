@@ -17,8 +17,8 @@ import qs.Ui
 Panel {
   id: root
 
-  moduleName: "jankeesvw.time-machine"
-  ipcTarget: "jankeesvw.time-machine"
+  moduleName: "ilya.time-machine"
+  ipcTarget: "ilya.time-machine"
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
@@ -238,11 +238,11 @@ Panel {
             width: parent.width
             bottomPadding: Style.space(8)
             text: {
-              if (TimeMachineStore.configInvalid) return "There is a problem with your configuration"
-              if (!TimeMachineStore.configured) return "No backups are set up yet"
-              if (TimeMachineStore.anyRunning) return "Backing up"
-              if (TimeMachineStore.anyFailed) return "A backup failed"
-              return "Backups"
+              if (TimeMachineStore.configInvalid) return TimeMachineStore.tr("panel.header.invalid")
+              if (!TimeMachineStore.configured) return TimeMachineStore.tr("panel.header.none")
+              if (TimeMachineStore.anyRunning) return TimeMachineStore.tr("panel.header.running")
+              if (TimeMachineStore.anyFailed) return TimeMachineStore.tr("panel.header.failed")
+              return TimeMachineStore.tr("panel.header.ok")
             }
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
@@ -260,7 +260,7 @@ Panel {
             bottomPadding: visible ? Style.space(8) : 0
             text: {
               if (TimeMachineStore.configInvalid) return TimeMachineStore.configError
-              if (!TimeMachineStore.configured) return "Create one below and it opens in your editor"
+              if (!TimeMachineStore.configured) return TimeMachineStore.tr("panel.createHint")
               return ""
             }
             textFormat: Text.PlainText
@@ -361,8 +361,8 @@ Panel {
             text: {
               var pr = TimeMachineStore.progress
               if (!pr || !pr.total_bytes) return ""
-              return TimeMachineStore.humanBytes(pr.bytes_done) + " of "
-                     + TimeMachineStore.humanBytes(pr.total_bytes)
+              return TimeMachineStore.fmt(TimeMachineStore.tr("panel.bytes"),
+                     [TimeMachineStore.humanBytes(pr.bytes_done), TimeMachineStore.humanBytes(pr.total_bytes)])
             }
             textFormat: Text.PlainText
             elide: Text.ElideRight
@@ -378,7 +378,7 @@ Panel {
           MenuRow {
             width: parent.width
             visible: TimeMachineStore.configured && TimeMachineStore.unitsInstalled
-            label: TimeMachineStore.anyRunning ? "Stop This Backup" : "Back Up Now"
+            label: TimeMachineStore.tr(TimeMachineStore.anyRunning ? "panel.stop" : "panel.backupNow")
             destructive: TimeMachineStore.anyRunning
             foreground: root.foreground
             fontFamily: root.fontFamily
@@ -396,7 +396,7 @@ Panel {
             visible: TimeMachineStore.configured && !TimeMachineStore.unitsInstalled
             topPadding: visible ? Style.space(6) : 0
             bottomPadding: visible ? Style.space(6) : 0
-            text: "Run \u2018omarchy-time-machine install\u2019 once to enable backups"
+            text: TimeMachineStore.tr("panel.installHint")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             color: root.dim
@@ -413,7 +413,7 @@ Panel {
           MenuRow {
             width: parent.width
             visible: TimeMachineStore.configured
-            label: "Restore Files\u2026"
+            label: TimeMachineStore.tr("panel.restoreFiles")
             foreground: root.foreground
             fontFamily: root.fontFamily
             onClicked: {
@@ -427,7 +427,7 @@ Panel {
           MenuRow {
             width: parent.width
             label: (TimeMachineStore.configured || TimeMachineStore.configInvalid)
-                   ? "Open Configuration\u2026" : "Create Configuration\u2026"
+                   ? TimeMachineStore.tr("panel.openConfig") : TimeMachineStore.tr("panel.createConfig")
             foreground: root.foreground
             fontFamily: root.fontFamily
             onClicked: {
@@ -459,9 +459,9 @@ Panel {
       id: stopConfirm
       anchors.fill: parent
       z: 10
-      message: "Stop this backup? Nothing is lost, but no snapshot is created for this run."
-      confirmText: "Stop"
-      cancelText: "Keep running"
+      message: TimeMachineStore.tr("panel.stopMessage")
+      confirmText: TimeMachineStore.tr("panel.stopConfirm")
+      cancelText: TimeMachineStore.tr("panel.keepRunning")
       fontFamily: root.fontFamily
       onConfirmed: {
         TimeMachineStore.stopBackup()

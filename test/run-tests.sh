@@ -660,6 +660,46 @@ $CLI demo off >/dev/null 2>&1
 [ "$($CLI status --json | jq -r '[.destinations[].name] | join(",")')" = "test" ]
 check $? "turning demo off restores the real configuration"
 
+# --- throughput tuning (ilya fork) -------------------------------------------
+# Cloud remotes are throttled per request, so rclone: repositories get bigger
+# packs and Drive chunks by default. A stub restic records what it was handed.
+
+group "Throughput tuning for cloud remotes"
+
+mkdir -p "$WORK/tstub"
+cat > "$WORK/tstub/restic" <<'STUB'
+#!/usr/bin/env bash
+{ printf 'ARGV %s\n' "$*"; printf 'PACK %s\n' "${RESTIC_PACK_SIZE:-}"; printf 'CHUNK %s\n' "${RCLONE_DRIVE_CHUNK_SIZE:-}"; } > "$TUNE_CAPTURE"
+echo '[]'
+STUB
+chmod +x "$WORK/tstub/restic"
+CONFIG="$XDG_CONFIG_HOME/omarchy-time-machine/config.json"
+cp "$CONFIG" "$WORK/config.before-tuning"
+tune() { TUNE_CAPTURE="$WORK/tune" PATH="$WORK/tstub:$PATH" $CLI snapshots --dest test --json >/dev/null 2>&1; }
+
+jq '.destinations[0].repository = "rclone:gdrive:backup/restic"' "$WORK/config.before-tuning" > "$CONFIG"
+tune
+grep -qx 'PACK 64' "$WORK/tune" && grep -qx 'CHUNK 64M' "$WORK/tune"
+check $? "an rclone repository gets 64 MiB packs and 64M Drive chunks by default"
+
+jq '.destinations[0].repository = "rclone:gdrive:backup/restic" | .destinations[0].pack_size = 32
+    | .destinations[0].connections = 8 | .destinations[0].rclone_chunk_size = "128M"' \
+  "$WORK/config.before-tuning" > "$CONFIG"
+tune
+grep -qx 'PACK 32' "$WORK/tune" && grep -qx 'CHUNK 128M' "$WORK/tune" && grep -q -- '-o rclone.connections=8' "$WORK/tune"
+check $? "per-destination pack_size, connections and rclone_chunk_size are honoured"
+
+cp "$WORK/config.before-tuning" "$CONFIG"
+tune
+grep -qx 'PACK ' "$WORK/tune" && grep -qx 'CHUNK ' "$WORK/tune"
+check $? "a local repository keeps restic's own defaults"
+
+jq '.destinations[0].pack_size = 4096' "$WORK/config.before-tuning" > "$CONFIG"
+$CLI snapshots --dest test --json 2>/dev/null | jq -e '.ok == false and (.error | test("pack_size"))' >/dev/null
+check $? "an absurd pack_size is refused"
+
+cp "$WORK/config.before-tuning" "$CONFIG"
+
 # --- result ----------------------------------------------------------------
 
 if [ "$SKIPPED" -gt 0 ]; then

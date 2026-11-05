@@ -305,7 +305,7 @@ FocusScope {
       PanelActionButton {
         anchors.verticalCenter: parent.verticalCenter
         iconText: "\uf060"   // back arrow; \u escape, see RestoreRow
-        tooltipText: "Back"
+        tooltipText: TimeMachineStore.tr("browser.back")
         foreground: root.foreground
         fontFamily: root.fontFamily
         onClicked: root.back()
@@ -387,7 +387,7 @@ FocusScope {
       Text {
         id: sourceLabel
         anchors.verticalCenter: parent.verticalCenter
-        text: "Source"
+        text: TimeMachineStore.tr("browser.source")
         textFormat: Text.PlainText
         color: root.dim
         font.family: root.fontFamily
@@ -421,7 +421,7 @@ FocusScope {
     Text {
       width: parent.width
       visible: TimeMachineStore.snapshotsBusy || TimeMachineStore.snapshotsError !== ""
-      text: TimeMachineStore.snapshotsBusy ? "Loading snapshots…" : TimeMachineStore.snapshotsError
+      text: TimeMachineStore.snapshotsBusy ? TimeMachineStore.tr("browser.loadingSnapshots") : TimeMachineStore.snapshotsError
       textFormat: Text.PlainText
       wrapMode: Text.WordWrap
       color: TimeMachineStore.snapshotsError !== "" ? root.urgent : root.dim
@@ -455,9 +455,10 @@ FocusScope {
         var total = TimeMachineStore.entries.length
         if (total === 0) return ""
         if (root.filter !== "")
-          return "\u201C" + root.filter + "\u201D \u00b7 "
-                 + root.visibleEntries.length + " of " + total
-        return total < 12 ? "" : total + " items \u00b7 type to filter"
+          return TimeMachineStore.fmt(TimeMachineStore.tr("browser.filterCount"),
+                 [root.filter, TimeMachineStore.num(root.visibleEntries.length, 0), TimeMachineStore.num(total, 0)])
+        return total < 12 ? "" : TimeMachineStore.fmt(TimeMachineStore.trn("browser.itemsHint", total),
+                                                      [TimeMachineStore.num(total, 0)])
       }
       textFormat: Text.PlainText
       elide: Text.ElideRight
@@ -471,7 +472,7 @@ FocusScope {
     Text {
       width: parent.width
       visible: TimeMachineStore.listBusy || TimeMachineStore.listError !== ""
-      text: TimeMachineStore.listBusy ? "Reading folder…" : TimeMachineStore.listError
+      text: TimeMachineStore.listBusy ? TimeMachineStore.tr("browser.readingFolder") : TimeMachineStore.listError
       textFormat: Text.PlainText
       wrapMode: Text.WordWrap
       color: TimeMachineStore.listError !== "" ? root.urgent : root.dim
@@ -518,7 +519,7 @@ FocusScope {
     Text {
       width: parent.width
       visible: TimeMachineStore.listTruncated
-      text: "Showing the first entries only — use the filter, or open a subfolder."
+      text: TimeMachineStore.tr("browser.truncated")
       textFormat: Text.PlainText
       wrapMode: Text.WordWrap
       color: root.dim
@@ -532,8 +533,8 @@ FocusScope {
       text: {
         if (TimeMachineStore.listBusy || TimeMachineStore.listError !== "") return ""
         if (TimeMachineStore.entries.length === 0)
-          return root.atRoot ? "" : "This folder is empty in this snapshot."
-        if (root.visibleEntries.length === 0) return "Nothing here matches the filter."
+          return root.atRoot ? "" : TimeMachineStore.tr("browser.emptyFolder")
+        if (root.visibleEntries.length === 0) return TimeMachineStore.tr("browser.noMatch")
         return ""
       }
       textFormat: Text.PlainText
@@ -556,7 +557,7 @@ FocusScope {
     MenuRow {
       width: parent.width
       visible: root.selected !== null && !TimeMachineStore.restoreBusy
-      label: root.selected ? "Restore \u201C" + String(root.selected.name) + "\u201D" : ""
+      label: root.selected ? TimeMachineStore.fmt(TimeMachineStore.tr("browser.restoreItem"), [String(root.selected.name)]) : ""
       foreground: root.foreground
       fontFamily: root.fontFamily
       onClicked: {
@@ -569,7 +570,7 @@ FocusScope {
     MenuRow {
       width: parent.width
       visible: TimeMachineStore.currentPath !== "" && !TimeMachineStore.restoreBusy
-      label: "Restore this folder (" + root.currentFolderName + ")"
+      label: TimeMachineStore.fmt(TimeMachineStore.tr("browser.restoreFolder"), [root.currentFolderName])
       foreground: root.foreground
       fontFamily: root.fontFamily
       onClicked: {
@@ -584,7 +585,7 @@ FocusScope {
       visible: TimeMachineStore.restoreBusy
       topPadding: visible ? Style.space(6) : 0
       bottomPadding: visible ? Style.space(6) : 0
-      text: "Restoring\u2026"
+      text: TimeMachineStore.tr("browser.restoring")
       textFormat: Text.PlainText
       color: root.dim
       font.family: root.fontFamily
@@ -596,7 +597,7 @@ FocusScope {
       visible: TimeMachineStore.restoreTarget !== "" || TimeMachineStore.restoreError !== ""
       text: TimeMachineStore.restoreError !== ""
             ? TimeMachineStore.restoreError
-            : "Restored into " + TimeMachineStore.restoreTarget
+            : TimeMachineStore.fmt(TimeMachineStore.tr("browser.restoredInto"), [TimeMachineStore.restoreTarget])
       textFormat: Text.PlainText
       wrapMode: Text.WrapAnywhere
       color: TimeMachineStore.restoreError !== "" ? root.urgent : root.dim
@@ -616,10 +617,10 @@ FocusScope {
     // Qt's AutoText, which renders anything tag-shaped as rich text and would
     // fetch what it points at. Same reason the bar tooltip goes through plain().
     message: root.restoreTargetName !== ""
-             ? "Restore \u201C" + TimeMachineStore.plain(root.restoreTargetName)
-               + "\u201D into ~/Restored? Nothing outside that folder is touched."
+             ? TimeMachineStore.fmt(TimeMachineStore.tr("browser.confirm"),
+                                    [TimeMachineStore.plain(root.restoreTargetName)])
              : ""
-    confirmText: "Restore"
+    confirmText: TimeMachineStore.tr("browser.restore")
     fontFamily: root.fontFamily
     onConfirmed: root.confirmAccept()
     onCanceled: root.confirmCancel()

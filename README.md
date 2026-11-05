@@ -1,4 +1,38 @@
-# Time Machine
+# Time Machine (ilya fork)
+
+Fork of [jankeesvw/omarchy-time-machine](https://github.com/jankeesvw/omarchy-time-machine), installed as `ilya.time-machine`. Upstream stays reachable as the `upstream` git remote; this work lives on the `ilya` branch.
+
+What the fork adds:
+
+- **Fast cloud remotes.** Google Drive and other object stores throttle per request, not per byte. For `rclone:` repositories the CLI now defaults to 64 MiB restic packs (restic: 16) and 64M Drive upload chunks (rclone: 8M), so the first upload makes about 4x fewer API calls. Per destination you can set:
+
+  | Setting | Default for `rclone:` | Meaning |
+  |---|---|---|
+  | `pack_size` | `64` | restic pack size in MiB (4–128) |
+  | `connections` | restic's 5 | parallel backend connections |
+  | `rclone_chunk_size` | `"64M"` | Google Drive upload chunk |
+
+  Variables exported from `<dest>.env` (`RESTIC_PACK_SIZE`, `RCLONE_DRIVE_CHUNK_SIZE`, any `RCLONE_*`) always win.
+
+- **Translations.** All UI text comes from `i18n/<lang>.json` through `Commons.Translations`, following Setup > Language live, with plural forms and locale-aware numbers and dates. Ships `en` and `ru`.
+
+- **Google Drive setup**, see below.
+
+## Google Drive with your own client ID
+
+rclone's shared Google client ID is rate-limited and being retired in 2026. Use your own:
+
+1. Google Cloud project with the Drive API enabled.
+2. Google Auth Platform: External audience, **published** (Testing mode expires the token every 7 days), Desktop app client.
+3. `rclone config create gdrive drive scope=drive.file client_id=... client_secret=...`
+4. Destination: `"repository": "rclone:gdrive:omarchy-backup/restic"`.
+
+`drive.file` only sees files created by that same client ID, so switching client IDs means starting a new repository.
+
+---
+
+## Upstream README
+
 
 Backups you can forget about, until the day you can't.
 

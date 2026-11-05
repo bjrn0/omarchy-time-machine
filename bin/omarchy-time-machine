@@ -469,6 +469,51 @@ sanitize_repository() {
 declare -a RESTIC_ARGS=()
 REPO_DISPLAY=""
 
+# Throughput for cloud remotes. Object stores and Google Drive charge per
+# request, not per byte: restic's default 16 MiB packs turn a 25 GB upload into
+# ~1600 file creations, and Drive throttles file creation long before the
+# uplink is full. Bigger packs mean fewer, larger requests. Applies to rclone:
+# repositories by default; any destination can set its own values, and a
+# value already exported (from the .env file) always wins.
+#
+#   "pack_size": 64            restic pack size in MiB (restic default: 16)
+#   "connections": 6           parallel rclone connections (restic default: 5)
+#   "rclone_chunk_size": "64M" Google Drive upload chunk (rclone default: 8M)
+#
+# Pack size only affects data written from now on; existing packs stay valid.
+throughput_tuning() {
+  local is_rclone=0 pack_size connections chunk
+  [[ "$RESTIC_REPOSITORY" == rclone:* ]] && is_rclone=1
+
+  pack_size="$(dest '.pack_size // empty')"
+  [ -z "$pack_size" ] && [ "$is_rclone" = "1" ] && pack_size=64
+  if [ -n "$pack_size" ] && [ -z "${RESTIC_PACK_SIZE:-}" ]; then
+    [[ "$pack_size" =~ ^[0-9]+$ ]] && [ "$pack_size" -ge 4 ] && [ "$pack_size" -le 128 ] ||
+      die "destination $DEST_NAME: pack_size must be a whole number of MiB between 4 and 128"
+    export RESTIC_PACK_SIZE="$pack_size"
+  fi
+
+  connections="$(dest '.connections // empty')"
+  if [ -n "$connections" ]; then
+    [[ "$connections" =~ ^[0-9]+$ ]] && [ "$connections" -ge 1 ] && [ "$connections" -le 32 ] ||
+      die "destination $DEST_NAME: connections must be between 1 and 32"
+    if [ "$is_rclone" = "1" ]; then
+      RESTIC_ARGS+=(-o "rclone.connections=$connections")
+    else
+      RESTIC_ARGS+=(-o "${RESTIC_REPOSITORY%%:*}.connections=$connections")
+    fi
+  fi
+
+  if [ "$is_rclone" = "1" ]; then
+    chunk="$(dest '.rclone_chunk_size // empty')"
+    [ -n "$chunk" ] || chunk="64M"
+    [[ "$chunk" =~ ^[0-9]+[KMG]$ ]] ||
+      die "destination $DEST_NAME: rclone_chunk_size must look like 64M"
+    export RCLONE_DRIVE_CHUNK_SIZE="${RCLONE_DRIVE_CHUNK_SIZE:-$chunk}"
+  fi
+  return 0
+}
+
 restic_context() {
   local repository password_file password_command key
 
@@ -486,6 +531,7 @@ restic_context() {
   password_file="$(expand_tilde "$(dest '.password_file // empty')")"
   password_command="$(dest '.password_command // empty')"
   RESTIC_ARGS=()
+  throughput_tuning
 
   if [ -n "$password_file" ] && [ -n "$password_command" ]; then
     die "destination $DEST_NAME sets both password_file and password_command; pick one (silently choosing would mask a half-finished migration)"
@@ -493,7 +539,7 @@ restic_context() {
 
   if [ -n "$password_command" ]; then
     # restic runs this itself, so the password never reaches our argv.
-    RESTIC_ARGS=(--password-command "$password_command")
+    RESTIC_ARGS+=(--password-command "$password_command")
     return 0
   fi
 
@@ -1124,6 +1170,7 @@ cmd_backup() {
   log_line "Source:  $(printf '%s, ' "${sources[@]}" | sed 's/, $//')"
   log_line "Target:  $REPO_DISPLAY"
   log_line "Log:     $LOG_FILE"
+  log_line "Tuning:  pack ${RESTIC_PACK_SIZE:-16} MiB${RCLONE_DRIVE_CHUNK_SIZE:+, drive chunk $RCLONE_DRIVE_CHUNK_SIZE}${RESTIC_ARGS[*]:+, ${RESTIC_ARGS[*]}}"
   [ "$OPT_DRY_RUN" = "1" ] && log_line "DRY RUN: nothing will be written"
   log_line ""
 

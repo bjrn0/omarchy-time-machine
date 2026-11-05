@@ -3,6 +3,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Commons as Commons
 
 // All Time Machine state lives here, and there is a concrete reason for that:
 // a bar widget is instantiated once per monitor, so anything owning a Process
@@ -39,6 +40,23 @@ Singleton {
   // widget, so that is what this takes, with the clock's own default.
   property string timeFormat: "HH:mm"
   property string dateFormat: "d MMM"
+
+  // --- strings -------------------------------------------------------------
+  // Catalogs live in i18n/ and follow Setup > Language live. Every view reads
+  // through tr()/trn()/fmt() so a language switch re-renders the bindings.
+  readonly property QtObject strings: Commons.Translations { directory: Qt.resolvedUrl("i18n") }
+  function tr(key) { return root.strings.t(key) }
+  function trn(key, count) { return root.strings.tn(key, count) }
+  // Fills %1..%9 in a single pass. Chained .arg() would re-scan the result,
+  // so a filename that itself contains "%2" could pull in the next argument.
+  function fmt(template, args) {
+    return String(template).replace(/%([1-9])/g, function (match, n) {
+      var value = args[Number(n) - 1]
+      return value === undefined ? match : String(value)
+    })
+  }
+  function num(value, decimals) { return Commons.I18n.formatNumber(value, decimals) }
+  function locale() { return Qt.locale(Commons.I18n.formatLocale) }
 
 
   // --- status -------------------------------------------------------------
@@ -182,20 +200,8 @@ Singleton {
   //
   // Tied to the destination name and the minute, so it changes as the run goes
   // on but does not flicker every time the percentage ticks over.
-  readonly property var workingPhrases: [
-    "Pushing bytes",
-    "Hoarding your files",
-    "Packing memories",
-    "Filing everything away",
-    "Squirrelling things away",
-    "Bottling the moment",
-    "Making yesterday reachable",
-    "Copying, deduplicating, encrypting",
-    "Freezing time",
-    "Keeping the past around",
-    "Boxing up the present",
-    "Talking to the other end"
-  ]
+  // phrase.0 .. phrase.11 in the catalogs.
+  readonly property int workingPhraseCount: 12
 
   // Advances on its own clock rather than riding clockTick, which only moves
   // once a minute: a backup that finishes in ninety seconds would have shown
@@ -214,7 +220,7 @@ Singleton {
     var offset = 0
     var key = String(seed)
     for (var i = 0; i < key.length; i++) offset = (offset * 31 + key.charCodeAt(i)) & 0x7fffffff
-    return workingPhrases[(phraseIndex + offset) % workingPhrases.length]
+    return tr("phrase." + ((phraseIndex + offset) % workingPhraseCount))
   }
 
   function destinationState(d) {
@@ -223,12 +229,11 @@ Singleton {
       var p = d.progress
       if (p && p.percent !== undefined && p.percent !== null)
         return Math.round(Number(p.percent) * 100) + "%"
-      return "Working\u2026"
+      return tr("state.working")
     }
-    if (!d.last_run) return "Never"
+    if (!d.last_run) return tr("state.never")
     if (d.last_run.result === "failed")
-      return "Failed " + menuDate(d.last_run.finished_at)
-               .replace(/^Today/, "today").replace(/^Yesterday/, "yesterday")
+      return fmt(tr("state.failed"), [lowerFirst(menuDate(d.last_run.finished_at))])
     return menuDate(d.last_run.finished_at)
   }
 
@@ -241,28 +246,29 @@ Singleton {
     if (d.running) {
       var p = d.progress
       var phase = p ? String(p.phase) : ""
-      if (phase === "pre") return "Waking up the destination\u2026"
-      if (phase === "unlock") return "Unlocking\u2026"
-      if (phase === "prune") return "Tidying up old backups\u2026"
+      if (phase === "pre") return tr("detail.waking")
+      if (phase === "unlock") return tr("detail.unlocking")
+      if (phase === "prune") return tr("detail.pruning")
 
       var phrase = workingPhrase(d.name)
       if (!p || !p.total_bytes) return phrase + "\u2026"
-      return phrase + "\u2026 " + humanBytes(p.bytes_done) + " of " + humanBytes(p.total_bytes)
+      return fmt(tr("detail.progress"), [phrase, humanBytes(p.bytes_done), humanBytes(p.total_bytes)])
     }
 
     if (destinationFailed(d)) {
       if (d.last_success_at)
-        return "Last good backup: " + menuDate(d.last_success_at)
-      return "No successful backup yet"
+        return fmt(tr("detail.lastGood"), [menuDate(d.last_success_at)])
+      return tr("detail.noSuccess")
     }
 
     if (!d.last_run) return ""
     var parts = []
     if (d.repo_size_bytes)
-      parts.push(humanBytes(d.repo_size_bytes)
-                 + (d.snapshot_count ? " in " + d.snapshot_count + " snapshots" : ""))
+      parts.push(d.snapshot_count
+                 ? fmt(trn("detail.stored", d.snapshot_count), [humanBytes(d.repo_size_bytes), num(d.snapshot_count, 0)])
+                 : humanBytes(d.repo_size_bytes))
     if (d.last_run.data_added_bytes)
-      parts.push(humanBytes(d.last_run.data_added_bytes) + " added")
+      parts.push(fmt(tr("detail.added"), [humanBytes(d.last_run.data_added_bytes)]))
     return parts.join(" \u00b7 ")
   }
 
@@ -383,11 +389,11 @@ Singleton {
         try {
           payload = JSON.parse(text)
         } catch (e) {
-          root.snapshotsError = "could not read snapshots"
+          root.snapshotsError = tr("error.snapshots")
           return
         }
         if (payload.ok !== true) {
-          root.snapshotsError = payload.error ? String(payload.error) : "could not read snapshots"
+          root.snapshotsError = payload.error ? String(payload.error) : tr("error.snapshots")
           return
         }
         root.snapshots = payload.snapshots || []
@@ -444,11 +450,11 @@ Singleton {
         try {
           payload = JSON.parse(text)
         } catch (e) {
-          root.listError = "could not read this folder"
+          root.listError = tr("error.folder")
           return
         }
         if (payload.ok !== true) {
-          root.listError = payload.error ? String(payload.error) : "could not read this folder"
+          root.listError = payload.error ? String(payload.error) : tr("error.folder")
           return
         }
         // Cache under the path the CLI reports, not the one that was asked
@@ -502,11 +508,11 @@ Singleton {
         try {
           payload = JSON.parse(text)
         } catch (e) {
-          root.restoreError = "restore failed"
+          root.restoreError = tr("error.restore")
           return
         }
         if (payload.ok === true) root.restoreTarget = String(payload.target)
-        else root.restoreError = payload.error ? String(payload.error) : "restore failed"
+        else root.restoreError = payload.error ? String(payload.error) : tr("error.restore")
       }
     }
   }
@@ -529,50 +535,55 @@ Singleton {
 
   function relativeTime(value) {
     var date = parseTime(value)
-    if (!date) return "never"
+    if (!date) return tr("time.never")
 
     var seconds = Math.floor((Date.now() - date.getTime()) / 1000)
     if (seconds < 0) seconds = 0
-    if (seconds < 60) return "just now"
+    if (seconds < 60) return tr("time.justNow")
 
     var minutes = Math.floor(seconds / 60)
-    if (minutes < 60) return minutes + (minutes === 1 ? " minute ago" : " minutes ago")
+    if (minutes < 60) return fmt(trn("time.minutes", minutes), [num(minutes, 0)])
 
     var hours = Math.floor(minutes / 60)
-    if (hours < 24) return hours + (hours === 1 ? " hour ago" : " hours ago")
+    if (hours < 24) return fmt(trn("time.hours", hours), [num(hours, 0)])
 
     var days = Math.floor(hours / 24)
-    if (days < 30) return days + (days === 1 ? " day ago" : " days ago")
+    if (days < 30) return fmt(trn("time.days", days), [num(days, 0)])
 
     var months = Math.floor(days / 30)
-    if (months < 12) return months + (months === 1 ? " month ago" : " months ago")
+    if (months < 12) return fmt(trn("time.months", months), [num(months, 0)])
 
     var years = Math.floor(days / 365)
-    return years + (years === 1 ? " year ago" : " years ago")
+    return fmt(trn("time.years", years), [num(years, 0)])
   }
 
   function shortDate(value) {
     var date = parseTime(value)
     if (!date) return ""
-    return Qt.formatDateTime(date, root.dateFormat + " " + root.timeFormat)
+    return date.toLocaleString(locale(), root.dateFormat + " " + root.timeFormat)
   }
 
   // "Today, 21:52" / "Yesterday, 03:09" / "24 Aug, 03:09" -- the menu-bar
   // phrasing, where the day matters more than how many hours ago it was.
   function menuDate(value) {
     var date = parseTime(value)
-    if (!date) return "Never"
+    if (!date) return tr("state.never")
 
     var now = new Date()
     var midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    var time = Qt.formatDateTime(date, root.timeFormat)
+    var time = date.toLocaleString(locale(), root.timeFormat)
 
     // "Today" and "Yesterday" beat any date format for the two days you look
     // at most, which is why every calendar app does it.
-    if (date >= midnight) return "Today, " + time
-    if (date >= new Date(midnight.getTime() - 86400000)) return "Yesterday, " + time
+    if (date >= midnight) return fmt(tr("date.today"), [time])
+    if (date >= new Date(midnight.getTime() - 86400000)) return fmt(tr("date.yesterday"), [time])
 
-    return Qt.formatDateTime(date, root.dateFormat) + ", " + time
+    return fmt(tr("date.other"), [date.toLocaleString(locale(), root.dateFormat), time])
+  }
+
+  function lowerFirst(text) {
+    var s = String(text)
+    return s.charAt(0).toLocaleLowerCase() + s.slice(1)
   }
 
   function humanBytes(value) {
@@ -581,36 +592,37 @@ Singleton {
     var units = ["B", "KB", "MB", "GB", "TB"]
     var unit = 0
     while (bytes >= 1024 && unit < units.length - 1) { bytes /= 1024; unit++ }
-    return (bytes >= 100 || unit === 0 ? Math.round(bytes) : bytes.toFixed(1)) + " " + units[unit]
+    return num(bytes, bytes >= 100 || unit === 0 ? 0 : 1) + " " + units[unit]
   }
 
   function humanDuration(seconds) {
     var total = Number(seconds)
     if (!isFinite(total) || total < 0) return ""
-    if (total < 60) return Math.round(total) + "s"
+    if (total < 60) return fmt(tr("duration.s"), [Math.round(total)])
     var minutes = Math.floor(total / 60)
-    if (minutes < 60) return minutes + "m " + Math.round(total % 60) + "s"
-    return Math.floor(minutes / 60) + "h " + (minutes % 60) + "m"
+    if (minutes < 60) return fmt(tr("duration.ms"), [minutes, Math.round(total % 60)])
+    return fmt(tr("duration.hm"), [Math.floor(minutes / 60), minutes % 60])
   }
 
   // What the bar tooltip says. The bar shows the icon alone, so this is the
   // only place the age of a backup is legible without opening the panel.
   readonly property string tooltip: {
     clockTick // re-evaluate as time passes
-    if (!configured) return "Time Machine — not configured yet"
+    if (!configured) return tr("tooltip.notConfigured")
     if (anyRunning) {
       var d = null
       for (var i = 0; i < destinations.length; i++)
         if (destinations[i].running) { d = destinations[i]; break }
       if (d) return destinationLabel(d) + ": " + destinationDetail(d)
-      return "Backing up…"
+      return tr("tooltip.backingUp")
     }
     if (failed) {
       var when = menuDate(lastRun.finished_at)
-      var since = lastSuccessAt !== "" ? ", last good one " + relativeTime(lastSuccessAt) : ""
-      return "Backup failed " + when.charAt(0).toLowerCase() + when.slice(1) + since
+      return lastSuccessAt !== ""
+             ? fmt(tr("tooltip.failedSince"), [lowerFirst(when), relativeTime(lastSuccessAt)])
+             : fmt(tr("tooltip.failed"), [lowerFirst(when)])
     }
-    if (!everRan) return "Time Machine — no backup yet"
-    return "Last backup: " + relativeTime(lastRun.finished_at)
+    if (!everRan) return tr("tooltip.noBackup")
+    return fmt(tr("tooltip.last"), [relativeTime(lastRun.finished_at)])
   }
 }
